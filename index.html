@@ -23,13 +23,15 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
 body{
+  -webkit-tap-highlight-color:transparent; overscroll-behavior-y:none;
   background:var(--bg); color:var(--text); font-family:var(--sans);
   font-size:16px; line-height:1.45; -webkit-font-smoothing:antialiased;
   padding-bottom:calc(74px + env(safe-area-inset-bottom));
 }
-.wrap{max-width:var(--maxw); margin:0 auto; padding:0 16px}
-header{padding:18px 0 8px; border-bottom:1px solid var(--line); margin-bottom:14px}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 max(16px,env(safe-area-inset-left)) 0 max(16px,env(safe-area-inset-right))}
+header{padding:calc(18px + env(safe-area-inset-top)) 0 8px; border-bottom:1px solid var(--line); margin-bottom:14px}
 .brand{font-family:var(--serif); font-weight:600; font-size:26px; letter-spacing:.2px}
 .brand .dot{color:var(--mens)}
 .status{color:var(--muted); font-size:14px; margin-top:3px; min-height:20px}
@@ -103,7 +105,7 @@ svg.chart{width:100%; height:auto; display:block}
 .banner.warn{background:#3a2426; border-color:#7a3a3f; color:#f0bdc1}
 
 /* settings */
-input[type=text],input[type=password]{width:100%; background:var(--surface2); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:11px 12px; font-size:15px; font-family:var(--sans); margin-bottom:10px}
+input[type=text],input[type=password]{width:100%; background:var(--surface2); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:11px 12px; font-size:16px; font-family:var(--sans); margin-bottom:10px}
 input::placeholder{color:var(--faint)}
 .btn{appearance:none; width:100%; background:var(--accent); color:#0c1a24; border:0; border-radius:11px; padding:13px; font-size:15px; font-weight:600; cursor:pointer; font-family:var(--sans); margin-bottom:8px}
 .btn:active{transform:scale(.99)}
@@ -118,6 +120,7 @@ details{margin-top:10px} summary{cursor:pointer; color:var(--accent); font-size:
 .ver{text-align:center; color:var(--faint); font-size:11px; margin:6px 0 2px}
 .hidden{display:none}
 a{color:var(--accent)}
+button,.logrow,.seg button,nav button{touch-action:manipulation; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -225,7 +228,7 @@ a{color:var(--accent)}
 <script>
 "use strict";
 const VERSION="v1 · 2026-06-12";
-const BLEED=2;
+const BLEED=1;
 const PHASES={
   mens:{label:"Mens",c:"var(--mens)"},
   follikular:{label:"Follikulär",c:"var(--follikular)"},
@@ -233,7 +236,7 @@ const PHASES={
   luteal:{label:"Luteal",c:"var(--luteal)"}
 };
 const PHASE_HEX={mens:"#C25B6E",follikular:"#6FB58A",agglossning:"#E0B255",luteal:"#C98A5E",okand:"#324a5e"};
-const FLOW_LABELS=["Ingen","Spotting","Lätt","Medel","Riklig"];
+const FLOW_LABELS=["Ingen","Blödning"];
 const SCALE_MOOD=["","Usel","Låg","Ok","Bra","Topp"];
 const SCALE_SLEEP=["","Dålig","Skral","Ok","God","Utmärkt"];
 
@@ -282,12 +285,19 @@ function prettyDate(s){const d=toDate(s);return `${WD[d.getUTCDay()]} ${d.getUTC
 
 /* ---------- cycle math (matches tested module) ---------- */
 function detectStarts(days){
-  const bleed=Object.keys(days).filter(d=>(days[d]&&days[d].flow||0)>=BLEED).sort();
+  const isBleed=d=>(days[d]&&days[d].flow||0)>=BLEED;
+  const keys=Object.keys(days).sort();
+  const maxDate=keys[keys.length-1];
+  const bleed=keys.filter(isBleed);
   const starts=[];
   for(const d of bleed){
     let recent=false;
-    for(let k=1;k<=3;k++){const p=days[addDays(d,-k)];if(p&&(p.flow||0)>=BLEED){recent=true;break;}}
+    for(let k=1;k<=3;k++){ if(isBleed(addDays(d,-k))){recent=true;break;} }
     if(recent) continue;
+    // episode confirmation: a real period bleeds >=2 of its first 3 days; filters one-off spotting.
+    // exception: the most recent logged day (future data not in yet) is accepted tentatively.
+    let run=0; for(let k=0;k<=2;k++){ if(isBleed(addDays(d,k))) run++; }
+    if(run<2 && d<maxDate) continue;
     if(starts.length && daysBetween(starts[starts.length-1],d)<15) continue;
     starts.push(d);
   }
@@ -384,7 +394,7 @@ function renderLogga(){
   document.getElementById("dDay").textContent=prettyDate(currentDate);
   document.getElementById("dSub").textContent=d.getUTCFullYear();
   buildSeg(document.getElementById("segFlow"),
-    FLOW_LABELS.map((l,i)=>({v:i,main:i===0?"0":i,sub:l})),"flow","flow");
+    FLOW_LABELS.map((l,i)=>({v:i,main:l})),"flow","flow");
   buildSeg(document.getElementById("segMood"),
     [1,2,3,4,5].map(i=>({v:i,main:i,sub:SCALE_MOOD[i]})),"mood");
   buildSeg(document.getElementById("segSleep"),
@@ -431,7 +441,7 @@ function renderLogg(){
     row.innerHTML=`
       <div class="ld"><div class="dt">${prettyDate(d)}</div><div class="meta">${cd}</div></div>
       <div class="vals">
-        <div class="v"><div class="n" style="color:${r.flow?'var(--mens)':'var(--faint)'}">${r.flow??'·'}</div><div class="k">blöd</div></div>
+        <div class="v"><div class="n" style="color:${r.flow?'var(--mens)':'var(--faint)'}">${r.flow?'●':'·'}</div><div class="k">blöd</div></div>
         <div class="v"><div class="n" style="color:${r.mood?'var(--mood)':'var(--faint)'}">${r.mood??'·'}</div><div class="k">hum</div></div>
         <div class="v"><div class="n" style="color:${r.sleep?'var(--sleep)':'var(--faint)'}">${r.sleep??'·'}</div><div class="k">sömn</div></div>
       </div>`;
